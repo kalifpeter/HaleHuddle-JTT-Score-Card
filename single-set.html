@@ -111,7 +111,6 @@ button{
     <label><span>Team 1</span><input id="teamA" type="text" placeholder="Team name"></label>
     <label><span>Team 2</span><input id="teamB" type="text" placeholder="Team name"></label>
   </div>
-  <div class="default-actions"><button class="default-btn" type="button">Default / Forfeit</button><span class="default-note">Parent enters games awarded</span></div>
 </section>
 
 <section class="card match" data-name="1st Singles">
@@ -199,6 +198,7 @@ button{
       <input class="score score-b" type="number" inputmode="numeric" min="0" placeholder="Score">
     </div>
   </div>
+  <div class="default-actions"><button class="default-btn" type="button">Default / Forfeit</button><span class="default-note">Parent enters games awarded</span></div>
 </section>
 
 <section class="card">
@@ -259,14 +259,24 @@ button{
   }
 
   function setDefault(card){
-    const choice = prompt('Which team DEFAULTED? Enter 1 for ' + teamA() + ' or 2 for ' + teamB() + '.');
-    if(choice !== '1' && choice !== '2') return;
-    const awarded = prompt('Games awarded to ' + (choice==='1'?teamB():teamA()) + ':', '');
-    if(awarded===null || awarded.trim()==='' || isNaN(Number(awarded)) || Number(awarded)<0) return;
-    card.dataset.defaulted = choice==='1'?'a':'b';
-    card.dataset.awarded = String(Math.floor(Number(awarded)));
+    const aName = teamA(), bName = teamB();
+    const aWon = confirm('DEFAULT / FORFEIT — ' + card.dataset.name + '\n\nDid ' + aName + ' receive the win?\n\nOK = ' + aName + '\nCancel = choose ' + bName);
+    let winner = aWon ? 'a' : 'b';
+    if(!aWon){
+      const bWon = confirm('Did ' + bName + ' receive the win?\n\nOK = ' + bName + '\nCancel = do not change this match');
+      if(!bWon) return;
+    }
+    const winnerName = winner==='a' ? aName : bName;
+    const awarded = prompt('Games awarded to ' + winnerName + ':', '0');
+    if(awarded===null) return;
+    const games = Math.max(0, Math.floor(Number(awarded)));
+    if(!Number.isFinite(games)){ alert('Enter the number of games awarded.'); return; }
+
+    card.dataset.defaulted = winner==='a' ? 'b' : 'a';
+    card.dataset.defaultWinner = winner;
+    card.dataset.awarded = String(games);
     const a=card.querySelector('.score-a'), b=card.querySelector('.score-b');
-    if(choice==='1'){a.value='0';b.value=card.dataset.awarded;}else{a.value=card.dataset.awarded;b.value='0';}
+    if(winner==='a'){ a.value=games; b.value=0; } else { a.value=0; b.value=games; }
     update();
   }
 
@@ -292,7 +302,8 @@ button{
         w.classList.remove('has');
       } else {
         completed++;
-        w.textContent = (card.dataset.defaulted ? 'DEFAULT — Winner: ' : 'Winner: ') + (a > b ? teamA() : b > a ? teamB() : 'Tie');
+        const decidedWinner = card.dataset.defaultWinner === 'a' ? teamA() : card.dataset.defaultWinner === 'b' ? teamB() : (a > b ? teamA() : b > a ? teamB() : 'Tie');
+        w.textContent = (card.dataset.defaulted ? 'DEFAULT — Winner: ' : 'Winner: ') + decidedWinner;
         w.classList.add('has');
       }
     });
@@ -309,21 +320,27 @@ button{
     matches.forEach(card => {
       const a = n(card.querySelector('.score-a'));
       const b = n(card.querySelector('.score-b'));
-      const win = (a === null || b === null) ? '—' : (a > b ? teamA() : b > a ? teamB() : 'Tie');
-      lines.push(
-        card.dataset.name + ': ' +
-        personList(card,'a') + ' vs ' + personList(card,'b') +
-        ' | ' + (a === null ? '—' : a) + '-' + (b === null ? '—' : b) +
-        ' | Winner: ' + win + (card.dataset.defaulted ? ' | DEFAULT / FORFEIT' : '')
-      );
+      const win = (a === null || b === null) ? '—' :
+        (card.dataset.defaultWinner === 'a' ? teamA() : card.dataset.defaultWinner === 'b' ? teamB() :
+        (a > b ? teamA() : b > a ? teamB() : 'Tie'));
+      lines.push(card.dataset.name);
+      lines.push('  ' + personList(card,'a') + ' (' + teamA() + ')');
+      lines.push('  vs');
+      lines.push('  ' + personList(card,'b') + ' (' + teamB() + ')');
+      lines.push('  Score: ' + (a === null ? '—' : a) + '–' + (b === null ? '—' : b));
+      lines.push('  Winner: ' + win + (card.dataset.defaulted ? ' — DEFAULT / FORFEIT' : ''));
+      lines.push('');
     });
 
     lines.push('');
-    lines.push('Total: ' + teamA() + ' ' + ta + ' — ' + teamB() + ' ' + tb);
-    lines.push(
-      'Sportsmanship: ' + teamA() + ' — ' + ($('sportA').value.trim() || '—') +
-      '; ' + teamB() + ' — ' + ($('sportB').value.trim() || '—')
-    );
+    lines.push('TEAM TOTALS');
+    lines.push('  ' + teamA() + ': ' + ta);
+    lines.push('  ' + teamB() + ': ' + tb);
+    lines.push('  Overall: ' + (!completed ? '—' : ta > tb ? teamA() : tb > ta ? teamB() : 'Tie'));
+    lines.push('');
+    lines.push('SPORTSMANSHIP');
+    lines.push('  ' + teamA() + ': ' + ($('sportA').value.trim() || '—'));
+    lines.push('  ' + teamB() + ': ' + ($('sportB').value.trim() || '—'));
     $('recap').textContent = lines.join('\n');
     save();
   }
@@ -344,6 +361,7 @@ button{
         scoreA:card.querySelector('.score-a').value,
         scoreB:card.querySelector('.score-b').value,
         defaulted:card.dataset.defaulted || '',
+        defaultWinner:card.dataset.defaultWinner || '',
         awarded:card.dataset.awarded || ''
       }))
     };
@@ -371,11 +389,19 @@ button{
         if(card.querySelector('.player-b2')) card.querySelector('.player-b2').value = m.b2 || '';
         card.querySelector('.score-a').value = m.scoreA || '';
         card.querySelector('.score-b').value = m.scoreB || '';
-        card.dataset.defaulted = m.defaulted || ''; card.dataset.awarded = m.awarded || '';
+        card.dataset.defaulted = m.defaulted || '';
+        card.dataset.defaultWinner = m.defaultWinner || '';
+        card.dataset.awarded = m.awarded || '';
       });
     }catch(e){}
   }
 
+  document.querySelectorAll('.match .score').forEach(el => el.addEventListener('input', () => {
+    const card=el.closest('.match');
+    if(card && card.dataset.defaulted){
+      delete card.dataset.defaulted; delete card.dataset.defaultWinner; delete card.dataset.awarded;
+    }
+  }));
   document.querySelectorAll('input').forEach(el => el.addEventListener('input', update));
   matches.forEach(card=>card.querySelector('.default-btn').addEventListener('click',()=>setDefault(card)));
 
